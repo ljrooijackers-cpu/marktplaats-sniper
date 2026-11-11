@@ -12,7 +12,23 @@
 </style>
 </head>
 <body class="bg-slate-950 text-slate-200 min-h-screen p-4 relative">
-<div class="max-w-5xl mx-auto space-y-4">
+
+<!-- Inlog Scherm (Wordt getoond als je niet bent ingelogd) -->
+<div id="authContainer" class="max-w-md mx-auto mt-20 bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4 shadow-xl">
+ <h2 class="text-xl font-bold text-sky-400 text-center">🎯 Marktplaats Sniper Login</h2>
+ <p class="text-xs text-slate-400 text-center">Log in om je persoonlijke snipers op al je apparaten te synchroniseren.</p>
+ <div class="space-y-3">
+  <input id="authUsername" type="text" placeholder="Gebruikersnaam" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
+  <input id="authPassword" type="password" placeholder="Wachtwoord" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
+  <div class="flex gap-2 pt-2">
+   <button id="loginBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold py-2.5">Inloggen</button>
+   <button id="registerBtn" class="flex-1 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 rounded-lg text-sm font-semibold py-2.5">Registreren</button>
+  </div>
+ </div>
+</div>
+
+<!-- Hoofd Applicatie (Wordt pas getoond na inloggen) -->
+<div id="appContainer" class="max-w-5xl mx-auto space-y-4 hidden">
 
 <header class="flex flex-wrap items-center justify-between gap-3 relative">
  <div class="flex items-center gap-3">
@@ -22,17 +38,16 @@
     <button id="navScanner">📱 Live Scanner</button>
     <button id="navSnipers">🎯 Snipers Beheren</button>
     <button id="navTrash">🗑️ Prullenbak (Verwijderd)</button>
+    <button id="logoutBtn" class="text-red-400 font-bold border-t border-slate-800">🚪 Uitloggen</button>
    </div>
   </div>
   <h1 id="pageTitle" class="text-xl md:text-2xl font-bold">🎯 Multi-Sniper Scanner</h1>
  </div>
 
  <div class="flex items-center gap-3">
-  <!-- Pushover Aan/Uit Knop -->
   <button id="pushoverToggleBtn" class="px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all bg-emerald-600 border-emerald-500 text-white shadow">
    🔔 Pushover: AAN
   </button>
-  
   <div id="scannerControls" class="flex items-center gap-3 text-sm">
    <span id="mode" class="px-2 py-1 rounded bg-slate-800">…</span>
    <span>Scan: <b id="cd" class="text-emerald-400 tabular-nums">5</b>s</span>
@@ -41,7 +56,7 @@
  </div>
 </header>
 
-<p id="subText" class="text-xs text-slate-400">Jouw persoonlijke live resultaten.</p>
+<p id="subText" class="text-xs text-slate-400">Jouw persoonlijke live resultaten gesynchroniseerd met je account.</p>
 
 <div id="scannerView" class="space-y-4">
  <div id="list" class="space-y-3"></div>
@@ -63,7 +78,6 @@
  </section>
 </div>
 
-<!-- Prullenbak View -->
 <div id="trashView" class="hidden space-y-4">
  <div class="flex justify-between items-center bg-slate-900 p-4 rounded-xl border border-slate-800">
   <h2 class="font-semibold text-sm text-sky-400">🗑️ Verwijderde Advertenties (Prullenbak)</h2>
@@ -75,6 +89,58 @@
 </div>
 
 <script>
+let currentUserId = localStorage.getItem('mp_user_id');
+const authContainer = document.getElementById('authContainer');
+const appContainer = document.getElementById('appContainer');
+
+if(currentUserId) {
+ authContainer.classList.add('hidden');
+ appContainer.classList.remove('hidden');
+}
+
+document.getElementById('registerBtn').onclick = async () => {
+ const username = document.getElementById('authUsername').value.trim();
+ const password = document.getElementById('authPassword').value;
+ if(!username || !password) return alert('Vul alle velden in.');
+ 
+ const res = await fetch('/api/register', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({username, password})
+ });
+ const data = await res.json();
+ if(res.ok) {
+  localStorage.setItem('mp_user_id', data.user_id);
+  location.reload();
+ } else {
+  alert(data.error || 'Registreren mislukt.');
+ }
+};
+
+document.getElementById('loginBtn').onclick = async () => {
+ const username = document.getElementById('authUsername').value.trim();
+ const password = document.getElementById('authPassword').value;
+ if(!username || !password) return alert('Vul alle velden in.');
+ 
+ const res = await fetch('/api/login', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({username, password})
+ });
+ const data = await res.json();
+ if(res.ok) {
+  localStorage.setItem('mp_user_id', data.user_id);
+  location.reload();
+ } else {
+  alert(data.error || 'Onjuiste gegevens.');
+ }
+};
+
+document.getElementById('logoutBtn').onclick = () => {
+ localStorage.removeItem('mp_user_id');
+ location.reload();
+};
+
 const menuBtn = document.getElementById('menuBtn');
 const menuDropdown = document.getElementById('menuDropdown');
 const scannerView = document.getElementById('scannerView');
@@ -85,7 +151,7 @@ const subText = document.getElementById('subText');
 const scannerControls = document.getElementById('scannerControls');
 const pushoverToggleBtn = document.getElementById('pushoverToggleBtn');
 
-menuBtn.onclick = () => menuDropdown.style.display = menuDropdown.style.display === 'block' ? 'none' : 'block';
+if(menuBtn) menuBtn.onclick = () => menuDropdown.style.display = menuDropdown.style.display === 'block' ? 'none' : 'block';
 
 async function fetchPushoverStatus() {
  try {
@@ -105,10 +171,9 @@ function updatePushoverButton(active) {
  }
 }
 
-pushoverToggleBtn.onclick = async () => {
- const currentlyActive = pushoverToggleBtn.textContent.includes("AAN");
- const newState = !currentlyActive;
- try {
+if(pushoverToggleBtn) {
+ pushoverToggleBtn.onclick = async () => {
+  const newState = !pushoverToggleBtn.textContent.includes("AAN");
   const res = await fetch('/api/pushover-toggle', {
    method: 'POST',
    headers: {'Content-Type': 'application/json'},
@@ -116,11 +181,8 @@ pushoverToggleBtn.onclick = async () => {
   });
   const data = await res.json();
   updatePushoverButton(data.active);
- } catch(e){
-  alert("Kon Pushover status niet wijzigen.");
- }
+ };
 }
-
 fetchPushoverStatus();
 
 function switchView(view) {
@@ -134,16 +196,13 @@ function switchView(view) {
   scannerView.classList.remove('hidden');
   scannerControls.classList.remove('hidden');
   pageTitle.textContent = '🎯 Multi-Sniper Scanner';
-  subText.textContent = 'Jouw persoonlijke live resultaten.';
  } else if(view === 'snipers') {
   snipersView.classList.remove('hidden');
   pageTitle.textContent = '🎯 Snipers Beheren';
-  subText.textContent = 'Beheer je eigen zoekopdrachten.';
   loadSnipers();
  } else if(view === 'trash') {
   trashView.classList.remove('hidden');
   pageTitle.textContent = '🗑️ Prullenbak';
-  subText.textContent = 'Bekijk of herstel je weggeklikte advertenties.';
   loadTrash();
  }
 }
@@ -152,12 +211,19 @@ document.getElementById('navScanner').onclick = () => switchView('scanner');
 document.getElementById('navSnipers').onclick = () => switchView('snipers');
 document.getElementById('navTrash').onclick = () => switchView('trash');
 
-function getStoredSnipers() {
- return JSON.parse(localStorage.getItem('marktplaats_snipers') || '[]');
+async function getStoredSnipers() {
+ try {
+  const res = await fetch('/api/snipers/get', {
+   method: 'POST',
+   headers: {'Content-Type': 'application/json'},
+   body: JSON.stringify({ user_id: currentUserId })
+  });
+  return await res.json();
+ } catch(e) { return []; }
 }
 
-function loadSnipers() {
- const snipers = getStoredSnipers();
+async function loadSnipers() {
+ const snipers = await getStoredSnipers();
  let h = '';
  if(!snipers.length) { h = '<p class="text-xs text-slate-400">Nog geen snipers ingesteld.</p>'; }
  snipers.forEach(s => {
@@ -169,15 +235,18 @@ function loadSnipers() {
  document.getElementById('snipersList').innerHTML = h;
 }
 
-document.getElementById('addSniperBtn').onclick = () => {
+document.getElementById('addSniperBtn').onclick = async () => {
  const query = document.getElementById('snQuery').value.trim();
  const minPrice = document.getElementById('snMin').value;
  const maxPrice = document.getElementById('snMax').value;
  if(!query) return alert('Vul een zoekterm in.');
  
- let snipers = getStoredSnipers();
- snipers.push({ id: String(Date.now()), query, minPrice, maxPrice });
- localStorage.setItem('marktplaats_snipers', JSON.stringify(snipers));
+ const sniper = { id: String(Date.now()), query, minPrice, maxPrice };
+ await fetch('/api/snipers/add', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({ user_id: currentUserId, sniper })
+ });
 
  document.getElementById('snQuery').value = '';
  document.getElementById('snMin').value = '';
@@ -186,50 +255,54 @@ document.getElementById('addSniperBtn').onclick = () => {
  alert('Sniper ingesteld!');
 };
 
-window.deleteSniper = (id) => {
- let snipers = getStoredSnipers().filter(s => s.id !== id);
- localStorage.setItem('marktplaats_snipers', JSON.stringify(snipers));
+window.deleteSniper = async (id) => {
+ await fetch('/api/snipers/delete', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({ user_id: currentUserId, id })
+ });
  loadSnipers();
 };
 
 const deals = new Map();
 const allCachedDeals = new Map();
-const listEl = document.getElementById('list');
-let ignoredIds = JSON.parse(localStorage.getItem('ignored_deals') || '[]');
+const listEl = id('list');
+function id(n){return document.getElementById(n);}
 
-function removeDeal(id) {
- if(!ignoredIds.includes(id)) { 
-  ignoredIds.push(id); 
-  localStorage.setItem('ignored_deals', JSON.stringify(ignoredIds)); 
- }
- deals.delete(id);
- const el = document.querySelector(`[data-id="${id}"]`); if(el) el.remove();
+async function getIgnoredIds() {
+ try {
+  const res = await fetch('/api/ignored/get', {
+   method: 'POST',
+   headers: {'Content-Type': 'application/json'},
+   body: JSON.stringify({ user_id: currentUserId })
+  });
+  return await res.json();
+ } catch(e) { return []; }
 }
 
-function restoreDeal(id) {
- ignoredIds = ignoredIds.filter(i => i !== id);
- localStorage.setItem('ignored_deals', JSON.stringify(ignoredIds));
- 
- const raw = allCachedDeals.get(id);
- if(raw) {
-  addDeal(raw);
- }
- loadTrash();
+async function removeDeal(itemId) {
+ await fetch('/api/ignored/add', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({ user_id: currentUserId, item_id: itemId })
+ });
+ deals.delete(itemId);
+ const el = document.querySelector(`[data-id="${itemId}"]`); if(el) el.remove();
 }
 
-function loadTrash() {
+async function loadTrash() {
  const trashListEl = document.getElementById('trashList');
  trashListEl.innerHTML = '';
+ const ignoredIds = await getIgnoredIds();
  
- const deletedIds = ignoredIds;
- if(!deletedIds.length) {
+ if(!ignoredIds.length) {
   trashListEl.innerHTML = '<p class="text-xs text-slate-400">De prullenbak is leeg.</p>';
   return;
  }
 
- deletedIds.forEach(id => {
-  const raw = allCachedDeals.get(id);
-  const title = raw ? raw.title : `Advertentie ID: ${id}`;
+ ignoredIds.forEach(idVal => {
+  const raw = allCachedDeals.get(idVal);
+  const title = raw ? raw.title : `Advertentie ID: ${idVal}`;
   const url = raw ? raw.url : `https://www.marktplaats.nl`;
   const price = raw ? raw.price_display : '';
   const image = raw ? raw.image : '';
@@ -244,25 +317,31 @@ function loadTrash() {
      <div class="text-xs text-slate-400 mt-0.5">Vraagprijs: <b class="text-white">${price}</b></div>
     </div>
    </div>
-   <button onclick="restoreDeal('${id}')" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded text-xs font-semibold shrink-0">Herstel</button>
+   <span class="text-xs text-slate-500">Verwijderd</span>
   `;
   trashListEl.appendChild(el);
  });
 }
 
-document.getElementById('clearTrashBtn').onclick = () => {
+document.getElementById('clearTrashBtn').onclick = async () => {
  if(confirm('Weet je zeker dat je de prullenbak wilt legen?')) {
-  ignoredIds = [];
-  localStorage.setItem('ignored_deals', JSON.stringify(ignoredIds));
+  await fetch('/api/ignored/clear', {
+   method: 'POST',
+   headers: {'Content-Type': 'application/json'},
+   body: JSON.stringify({ user_id: currentUserId })
+  });
   loadTrash();
  }
 };
 
-function addDeal(raw) {
+async function addDeal(raw) {
  allCachedDeals.set(raw.id, raw);
- if(deals.has(raw.id) || ignoredIds.includes(raw.id)) return;
- deals.set(raw.id, raw);
+ if(deals.has(raw.id)) return;
+ 
+ const ignoredIds = await getIgnoredIds();
+ if(ignoredIds.includes(raw.id)) return;
 
+ deals.set(raw.id, raw);
  const el = document.createElement('div');
  el.dataset.id = raw.id;
  el.className = 'bg-slate-900 border border-slate-800 rounded-xl p-4 relative';
@@ -281,14 +360,15 @@ function addDeal(raw) {
 }
 
 async function scan() {
+ if(!currentUserId) return;
  let live = false;
  try {
-  const snipers = getStoredSnipers();
+  const snipers = await getStoredSnipers();
   if(snipers.length > 0) {
    const res = await fetch('/api/scan-item', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ snipers })
+    body: JSON.stringify({ user_id: currentUserId, snipers })
    });
    if(res.ok) {
     const jsonDeals = await res.json();
@@ -296,20 +376,22 @@ async function scan() {
     live = true;
    }
   } else {
-   live = true; // Geen snipers ingesteld, maar systeem werkt wel
+   live = true;
   }
  } catch(e){}
  const modeEl = document.getElementById('mode');
- if(modeEl) modeEl.textContent = live ? '🟢 Persoonlijke Snipers Actief' : '🧪 Wachten...';
+ if(modeEl) modeEl.textContent = live ? '🟢 Account Gesynchroniseerd' : '🧪 Wachten...';
 }
 
-let left = 5;
-setInterval(async () => {
- left--; if(left <= 0) { left = 5; await scan(); }
- const cdEl = document.getElementById('cd'); if(cdEl) cdEl.textContent = left;
-}, 1000);
-document.getElementById('scanNow').onclick = async () => { left = 5; await scan(); };
-scan();
+if(currentUserId) {
+ let left = 5;
+ setInterval(async () => {
+  left--; if(left <= 0) { left = 5; await scan(); }
+  const cdEl = document.getElementById('cd'); if(cdEl) cdEl.textContent = left;
+ }, 1000);
+ document.getElementById('scanNow').onclick = async () => { left = 5; await scan(); };
+ scan();
+}
 </script>
 </body>
 </html>
