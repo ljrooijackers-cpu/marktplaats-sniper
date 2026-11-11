@@ -288,7 +288,7 @@ function addDeal(raw) {
       <button onclick="removeDeal('${raw.id}')" class="text-slate-400 hover:text-red-400 font-bold">✕</button>
      </div>
     </div>
-    <div class="text-xs text-slate-400 mt-1">Zoekopdracht: <b class="text-emerald-400">${raw.query}</b> · Vraagprijs: <b class="text-white">€${raw.price}</b></div>
+    <div class="text-xs text-slate-400 mt-1">Zoekopdracht: <b class="text-emerald-400">${raw.query}</b> · Vraagprijs: <b class="text-white">${raw.price_display || '€' + raw.price}</b></div>
     <div class="text-xs text-slate-300 mt-2 bg-slate-800/80 p-2 rounded border border-slate-700/50 flex flex-wrap gap-4">
       <span>Est. Marktwaarde: <b class="text-sky-400">€${raw.est_waarde || raw.price}</b></span>
       <span>Netto Winst Est.: <b class="${(raw.winst||0)>=0?'text-emerald-400':'text-red-400'}">€${raw.winst || 0} (${raw.marge || 0}%)</b></span>
