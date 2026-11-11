@@ -41,7 +41,7 @@
  </div>
 </header>
 
-<p id="subText" class="text-xs text-slate-400">Live resultaten op al je actieve snipers.</p>
+<p id="subText" class="text-xs text-slate-400">Jouw persoonlijke live resultaten.</p>
 
 <div id="scannerView" class="space-y-4">
  <div id="list" class="space-y-3"></div>
@@ -58,7 +58,7 @@
   </div>
  </section>
  <section class="bg-slate-900 rounded-xl p-4 border border-slate-800">
-  <h2 class="font-semibold text-sm text-sky-400 mb-3">📋 Actieve Snipers</h2>
+  <h2 class="font-semibold text-sm text-sky-400 mb-3">📋 Jouw Actieve Snipers</h2>
   <div id="snipersList" class="space-y-2"></div>
  </section>
 </div>
@@ -134,11 +134,11 @@ function switchView(view) {
   scannerView.classList.remove('hidden');
   scannerControls.classList.remove('hidden');
   pageTitle.textContent = '🎯 Multi-Sniper Scanner';
-  subText.textContent = 'Live resultaten op al je actieve snipers.';
+  subText.textContent = 'Jouw persoonlijke live resultaten.';
  } else if(view === 'snipers') {
   snipersView.classList.remove('hidden');
   pageTitle.textContent = '🎯 Snipers Beheren';
-  subText.textContent = 'Beheer je zoekopdrachten.';
+  subText.textContent = 'Beheer je eigen zoekopdrachten.';
   loadSnipers();
  } else if(view === 'trash') {
   trashView.classList.remove('hidden');
@@ -193,7 +193,7 @@ window.deleteSniper = (id) => {
 };
 
 const deals = new Map();
-const allCachedDeals = new Map(); // Onthoudt alle binnengekomen advertenties voor de prullenbak
+const allCachedDeals = new Map();
 const listEl = document.getElementById('list');
 let ignoredIds = JSON.parse(localStorage.getItem('ignored_deals') || '[]');
 
@@ -210,7 +210,6 @@ function restoreDeal(id) {
  ignoredIds = ignoredIds.filter(i => i !== id);
  localStorage.setItem('ignored_deals', JSON.stringify(ignoredIds));
  
- // Als de advertentie er nog is, zet hem terug in de feed
  const raw = allCachedDeals.get(id);
  if(raw) {
   addDeal(raw);
@@ -286,22 +285,22 @@ async function scan() {
  try {
   const snipers = getStoredSnipers();
   if(snipers.length > 0) {
-   await fetch('/api/scan-item', {
+   const res = await fetch('/api/scan-item', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ snipers })
    });
-  }
-  
-  const dealsRes = await fetch('/api/deals', {cache:'no-store'});
-  if(dealsRes.ok) {
-   const jsonDeals = await dealsRes.json();
-   jsonDeals.reverse().forEach(d => addDeal(d));
-   live = true;
+   if(res.ok) {
+    const jsonDeals = await res.json();
+    jsonDeals.reverse().forEach(d => addDeal(d));
+    live = true;
+   }
+  } else {
+   live = true; // Geen snipers ingesteld, maar systeem werkt wel
   }
  } catch(e){}
  const modeEl = document.getElementById('mode');
- if(modeEl) modeEl.textContent = live ? '🟢 Live Snipers Actief' : '🧪 Wachten...';
+ if(modeEl) modeEl.textContent = live ? '🟢 Persoonlijke Snipers Actief' : '🧪 Wachten...';
 }
 
 let left = 5;
