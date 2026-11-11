@@ -6,7 +6,7 @@
 <title>Marktplaats Multi-Sniper</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-#menuDropdown { display: none; position: absolute; top: 50px; left: 16px; background: #1c1c1e; border: 1px solid #38383a; border-radius: 12px; z-index: 50; width: 200px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+#menuDropdown { display: none; position: absolute; top: 50px; left: 16px; background: #1c1c1e; border: 1px solid #38383a; border-radius: 12px; z-index: 50; width: 220px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
 #menuDropdown button { width: 100%; text-align: left; padding: 12px 16px; font-size: 14px; color: #f2f2f7; background: none; border: 0; cursor: pointer; }
 #menuDropdown button:hover { background: #2c2c2e; }
 </style>
@@ -21,6 +21,7 @@
    <div id="menuDropdown">
     <button id="navScanner">📱 Live Scanner</button>
     <button id="navSnipers">🎯 Snipers Beheren</button>
+    <button id="navTrash">🗑️ Prullenbak (Verwijderd)</button>
    </div>
   </div>
   <h1 id="pageTitle" class="text-xl md:text-2xl font-bold">🎯 Multi-Sniper Scanner</h1>
@@ -62,6 +63,15 @@
  </section>
 </div>
 
+<!-- Prullenbak View -->
+<div id="trashView" class="hidden space-y-4">
+ <div class="flex justify-between items-center bg-slate-900 p-4 rounded-xl border border-slate-800">
+  <h2 class="font-semibold text-sm text-sky-400">🗑️ Verwijderde Advertenties (Prullenbak)</h2>
+  <button id="clearTrashBtn" class="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded text-xs font-semibold">Prullenbak Leegmaken</button>
+ </div>
+ <div id="trashList" class="space-y-3"></div>
+</div>
+
 </div>
 
 <script>
@@ -69,6 +79,7 @@ const menuBtn = document.getElementById('menuBtn');
 const menuDropdown = document.getElementById('menuDropdown');
 const scannerView = document.getElementById('scannerView');
 const snipersView = document.getElementById('snipersView');
+const trashView = document.getElementById('trashView');
 const pageTitle = document.getElementById('pageTitle');
 const subText = document.getElementById('subText');
 const scannerControls = document.getElementById('scannerControls');
@@ -116,6 +127,7 @@ function switchView(view) {
  menuDropdown.style.display = 'none';
  scannerView.classList.add('hidden');
  snipersView.classList.add('hidden');
+ trashView.classList.add('hidden');
  scannerControls.classList.add('hidden');
 
  if(view === 'scanner') {
@@ -128,11 +140,17 @@ function switchView(view) {
   pageTitle.textContent = '🎯 Snipers Beheren';
   subText.textContent = 'Beheer je zoekopdrachten.';
   loadSnipers();
+ } else if(view === 'trash') {
+  trashView.classList.remove('hidden');
+  pageTitle.textContent = '🗑️ Prullenbak';
+  subText.textContent = 'Bekijk of herstel je weggeklikte advertenties.';
+  loadTrash();
  }
 }
 
 document.getElementById('navScanner').onclick = () => switchView('scanner');
 document.getElementById('navSnipers').onclick = () => switchView('snipers');
+document.getElementById('navTrash').onclick = () => switchView('trash');
 
 function getStoredSnipers() {
  return JSON.parse(localStorage.getItem('marktplaats_snipers') || '[]');
@@ -175,16 +193,74 @@ window.deleteSniper = (id) => {
 };
 
 const deals = new Map();
+const allCachedDeals = new Map(); // Onthoudt alle binnengekomen advertenties voor de prullenbak
 const listEl = document.getElementById('list');
 let ignoredIds = JSON.parse(localStorage.getItem('ignored_deals') || '[]');
 
 function removeDeal(id) {
- if(!ignoredIds.includes(id)) { ignoredIds.push(id); localStorage.setItem('ignored_deals', JSON.stringify(ignoredIds)); }
+ if(!ignoredIds.includes(id)) { 
+  ignoredIds.push(id); 
+  localStorage.setItem('ignored_deals', JSON.stringify(ignoredIds)); 
+ }
  deals.delete(id);
  const el = document.querySelector(`[data-id="${id}"]`); if(el) el.remove();
 }
 
+function restoreDeal(id) {
+ ignoredIds = ignoredIds.filter(i => i !== id);
+ localStorage.setItem('ignored_deals', JSON.stringify(ignoredIds));
+ 
+ // Als de advertentie er nog is, zet hem terug in de feed
+ const raw = allCachedDeals.get(id);
+ if(raw) {
+  addDeal(raw);
+ }
+ loadTrash();
+}
+
+function loadTrash() {
+ const trashListEl = document.getElementById('trashList');
+ trashListEl.innerHTML = '';
+ 
+ const deletedIds = ignoredIds;
+ if(!deletedIds.length) {
+  trashListEl.innerHTML = '<p class="text-xs text-slate-400">De prullenbak is leeg.</p>';
+  return;
+ }
+
+ deletedIds.forEach(id => {
+  const raw = allCachedDeals.get(id);
+  const title = raw ? raw.title : `Advertentie ID: ${id}`;
+  const url = raw ? raw.url : `https://www.marktplaats.nl`;
+  const price = raw ? raw.price_display : '';
+  const image = raw ? raw.image : '';
+
+  const el = document.createElement('div');
+  el.className = 'bg-slate-900 border border-slate-800 rounded-xl p-4 flex justify-between items-center gap-3';
+  el.innerHTML = `
+   <div class="flex gap-3 items-center min-w-0">
+    ${image ? `<img src="${image}" class="w-12 h-12 rounded-lg object-cover bg-slate-800 shrink-0">` : ''}
+    <div class="min-w-0">
+     <div class="font-semibold truncate text-sm"><a class="hover:underline text-sky-400" target="_blank" href="${url}">${title}</a></div>
+     <div class="text-xs text-slate-400 mt-0.5">Vraagprijs: <b class="text-white">${price}</b></div>
+    </div>
+   </div>
+   <button onclick="restoreDeal('${id}')" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded text-xs font-semibold shrink-0">Herstel</button>
+  `;
+  trashListEl.appendChild(el);
+ });
+}
+
+document.getElementById('clearTrashBtn').onclick = () => {
+ if(confirm('Weet je zeker dat je de prullenbak wilt legen?')) {
+  ignoredIds = [];
+  localStorage.setItem('ignored_deals', JSON.stringify(ignoredIds));
+  loadTrash();
+ }
+};
+
 function addDeal(raw) {
+ allCachedDeals.set(raw.id, raw);
  if(deals.has(raw.id) || ignoredIds.includes(raw.id)) return;
  deals.set(raw.id, raw);
 
@@ -197,7 +273,7 @@ function addDeal(raw) {
    <div class="flex-grow min-w-0">
     <div class="flex flex-wrap justify-between items-start gap-2">
      <div class="font-semibold truncate pr-6"><a class="hover:underline text-sky-400" target="_blank" href="${raw.url}">${raw.title}</a></div>
-     <button onclick="removeDeal('${raw.id}')" class="text-slate-400 hover:text-red-400 font-bold">✕</button>
+     <button onclick="removeDeal('${raw.id}')" class="text-slate-400 hover:text-red-400 font-bold" title="Verwijder">✕</button>
     </div>
     <div class="text-xs text-slate-400 mt-1">Zoekopdracht: <b class="text-emerald-400">${raw.query}</b> · Vraagprijs: <b class="text-white">${raw.price_display}</b></div>
    </div>
