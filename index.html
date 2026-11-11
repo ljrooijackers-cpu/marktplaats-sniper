@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Marktplaats Multi-Sniper & AI Taxateur</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+.calc-container { background: #1c1c1e; color: #f2f2f7; border-radius: 14px; padding: 16px; border: 1px solid #38383a; }
+.calc-card { background: #1c1c1e; border: 1px solid #38383a; border-radius: 14px; padding: 14px; margin-top: 12px; }
+.calc-val { font-size: 38px; font-weight: 700; color: #38d27a; margin: 2px 0; }
+.calc-row { display: flex; justify-content: space-between; font-size: 14px; padding: 3px 0; color: #98989f; }
+.calc-row b { color: #f2f2f7; font-weight: 500; }
+.calc-input { width: 100%; font: inherit; padding: 11px; border: 1px solid #38383a; border-radius: 10px; background: #111; color: #f2f2f7; margin-top: 4px; margin-bottom: 10px; }
+.calc-main-btn { font: inherit; padding: 13px; border: 0; border-radius: 12px; background: #38d27a; color: #111; width: 100%; font-weight: 700; margin-top: 10px; cursor: pointer; }
+.pos { color: #38d27a; } .neg { color: #ff6b6b; }
+#menuDropdown { display: none; position: absolute; top: 50px; left: 16px; background: #1c1c1e; border: 1px solid #38383a; border-radius: 12px; z-index: 50; width: 200px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+#menuDropdown button { width: 100%; text-align: left; padding: 12px 16px; font-size: 14px; color: #f2f2f7; background: none; border: 0; cursor: pointer; }
+#menuDropdown button:hover { background: #2c2c2e; }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen p-4 relative">
+<div class="max-w-5xl mx-auto space-y-4">
+
+<header class="flex flex-wrap items-center justify-between gap-3 relative">
+ <div class="flex items-center gap-3">
+  <div class="relative">
+   <button id="menuBtn" class="bg-slate-800 hover:bg-slate-700 text-sky-400 px-3 py-2 rounded-xl text-xl font-bold border border-slate-700 transition-colors shadow" title="Menu">⋮</button>
+   <div id="menuDropdown">
+    <button id="navScanner">📱 Live Scanner</button>
+    <button id="navCalc">🤖 AI Taxateur</button>
+    <button id="navSnipers">🎯 Snipers Beheren</button>
+   </div>
+  </div>
+  <h1 id="pageTitle" class="text-xl md:text-2xl font-bold">🎯 Multi-Sniper Scanner</h1>
+ </div>
+
+ <div class="flex items-center gap-3">
+  <!-- Pushover Aan/Uit Knop -->
+  <button id="pushoverToggleBtn" class="px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all bg-emerald-600 border-emerald-500 text-white shadow">
+   🔔 Pushover: AAN
+  </button>
+  
+  <div id="scannerControls" class="flex items-center gap-3 text-sm">
+   <span id="mode" class="px-2 py-1 rounded bg-slate-800">…</span>
+   <span>Scan: <b id="cd" class="text-emerald-400 tabular-nums">5</b>s</span>
+   <button id="scanNow" class="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium">Scan nu</button>
+  </div>
+ </div>
+</header>
+
+<p id="subText" class="text-xs text-slate-400">Live marktwaarde & winstanalyse op al je actieve snipers.</p>
+
+<div id="scannerView" class="space-y-4">
+ <div id="list" class="space-y-3"></div>
+</div>
+
+<div id="calculatorView" class="hidden calc-container space-y-3">
+ <h2 class="text-lg font-bold text-emerald-400 m-0">🤖 AI Marktplaats Taxateur</h2>
+ <p class="text-xs text-slate-400">Typ hieronder wat je wilt taxeren (bijv. "iphone 15, gebarste scherm, 128 gb, 78% batterij"). De AI onderzoekt live de markt.</p>
+ 
+ <div>
+  <label class="text-xs text-slate-400">Wat wil je taxeren?</label>
+  <input id="aiPrompt" type="text" class="calc-input" placeholder="Bijv. iphone 15, gebarste scherm, 128 gb, 78% batterij">
+ </div>
+ 
+ <div class="grid md:grid-cols-2 gap-2">
+  <div>
+   <label class="text-xs text-slate-400">Jouw verwachte inkoopprijs € (optioneel)</label>
+   <input id="aiCost" type="number" class="calc-input" placeholder="Bijv. 180">
+  </div>
+  <div>
+   <label class="text-xs text-slate-400">Zoekterm voor marktdata</label>
+   <input id="aiQuery" type="text" class="calc-input" placeholder="Bijv. iphone 15">
+  </div>
+ </div>
+
+ <button id="aiRunBtn" class="calc-main-btn">Start AI Markt-Onderzoek 🔍</button>
+ <div id="aiResult" class="hidden"></div>
+</div>
+
+<div id="snipersView" class="hidden space-y-4">
+ <section class="bg-slate-900 rounded-xl p-4 border border-slate-800 space-y-3">
+  <h2 class="font-semibold text-sm text-sky-400">🎯 Nieuwe Sniper Instellen</h2>
+  <div class="grid md:grid-cols-3 gap-2">
+   <input id="snQuery" placeholder="Zoekterm (bv. Vespa sprint, Zip 2t, PS5...)" class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 md:col-span-3">
+   <input id="snMin" type="number" placeholder="Min prijs €" class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200">
+   <input id="snMax" type="number" placeholder="Max prijs €" class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200">
+   <button id="addSniperBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white rounded text-sm font-semibold py-2">Voeg Sniper toe</button>
+  </div>
+ </section>
+ <section class="bg-slate-900 rounded-xl p-4 border border-slate-800">
+  <h2 class="font-semibold text-sm text-sky-400 mb-3">📋 Actieve Snipers</h2>
+  <div id="snipersList" class="space-y-2"></div>
+ </section>
+</div>
+
+</div>
+
+<script>
+const menuBtn = document.getElementById('menuBtn');
+const menuDropdown = document.getElementById('menuDropdown');
+const scannerView = document.getElementById('scannerView');
+const calculatorView = document.getElementById('calculatorView');
+const snipersView = document.getElementById('snipersView');
+const pageTitle = document.getElementById('pageTitle');
+const subText = document.getElementById('subText');
+const scannerControls = document.getElementById('scannerControls');
+const pushoverToggleBtn = document.getElementById('pushoverToggleBtn');
+
+menuBtn.onclick = () => menuDropdown.style.display = menuDropdown.style.display === 'block' ? 'none' : 'block';
+
+async function fetchPushoverStatus() {
+ try {
+  const res = await fetch('/api/pushover-status');
+  const data = await res.json();
+  updatePushoverButton(data.active);
+ } catch(e){}
+}
+
+function updatePushoverButton(active) {
+ if(active) {
+  pushoverToggleBtn.className = "px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all bg-emerald-600 border-emerald-500 text-white shadow";
+  pushoverToggleBtn.textContent = "🔔 Pushover: AAN";
+ } else {
+  pushoverToggleBtn.className = "px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all bg-slate-800 border-slate-700 text-slate-400 shadow";
+  pushoverToggleBtn.textContent = "🔕 Pushover: UIT";
+ }
+}
+
+pushoverToggleBtn.onclick = async () => {
+ const currentlyActive = pushoverToggleBtn.textContent.includes("AAN");
+ const newState = !currentlyActive;
+ try {
+  const res = await fetch('/api/pushover-toggle', {
+   method: 'POST',
+   headers: {'Content-Type': 'application/json'},
+   body: JSON.stringify({ active: newState })
+  });
+  const data = await res.json();
+  updatePushoverButton(data.active);
+ } catch(e){
+  alert("Kon Pushover status niet wijzigen.");
+ }
+}
+
+fetchPushoverStatus();
+
+function switchView(view) {
+ menuDropdown.style.display = 'none';
+ scannerView.classList.add('hidden');
+ calculatorView.classList.add('hidden');
+ snipersView.classList.add('hidden');
+ scannerControls.classList.add('hidden');
+
+ if(view === 'scanner') {
+  scannerView.classList.remove('hidden');
+  scannerControls.classList.remove('hidden');
+  pageTitle.textContent = '🎯 Multi-Sniper Scanner';
+  subText.textContent = 'Live marktwaarde & winstanalyse op al je actieve snipers.';
+ } else if(view === 'calculator') {
+  calculatorView.classList.remove('hidden');
+  pageTitle.textContent = '🤖 AI Taxateur';
+  subText.textContent = 'Laat de AI elk type product onderzoeken en taxeren voor Marktplaats.';
+ } else if(view === 'snipers') {
+  snipersView.classList.remove('hidden');
+  pageTitle.textContent = '🎯 Snipers Beheren';
+  subText.textContent = 'Beheer je zoekopdrachten en automatische winst-analyses.';
+  loadSnipers();
+ }
+}
+
+document.getElementById('navScanner').onclick = () => switchView('scanner');
+document.getElementById('navCalc').onclick = () => switchView('calculator');
+document.getElementById('navSnipers').onclick = () => switchView('snipers');
+
+document.getElementById('aiRunBtn').onclick = async () => {
+ const promptText = document.getElementById('aiPrompt').value.trim();
+ const cost = document.getElementById('aiCost').value;
+ let query = document.getElementById('aiQuery').value.trim();
+ 
+ if(!promptText) return alert('Vul eerst in wat je wilt taxeren.');
+ if(!query) {
+  query = promptText.split(' ').slice(0, 2).join(' ');
+ }
+
+ const resBox = document.getElementById('aiResult');
+ resBox.classList.remove('hidden');
+ resBox.innerHTML = '<p class="text-xs text-yellow-400 animate-pulse">🔍 AI is via Python live Marktplaats data aan het onderzoeken...</p>';
+
+ try {
+  const resp = await fetch('/api/taxeer', {
+   method: 'POST',
+   headers: {'Content-Type': 'application/json'},
+   body: JSON.stringify({ prompt: promptText, query: query, cost: cost })
+  });
+  const data = await resp.json();
+
+  if(data.error) {
+   resBox.innerHTML = `<p class="text-xs text-red-400">⚠️ Fout: ${data.error}</p>`;
+   return;
+  }
+
+  let h = `<div class="calc-card">
+   <div class="text-xs text-slate-400">AI Markttaxatie voor: <b class="text-white">${promptText}</b></div>
+   <div class="calc-val">€ ${data.val}</div>
+   <div class="calc-row"><span>Gemiddelde marktprijs in regio Veldhoven</span><b>€ ${data.avg}</b></div>
+   <div class="calc-row"><span>AI Analyse &amp; Conditie</span><b>${data.note}</b></div>`;
+  
+  if(cost && cost > 0) {
+   h += `<div class="calc-row" style="margin-top:8px"><span>Inkoopprijs</span><b>€ ${cost}</b></div>
+         <div class="calc-row" style="font-size:16px"><span>Verwachte Netto Winst</span><b class="${data.winst>=0?'pos':'neg'}">€ ${data.winst}</b></div>`;
+  }
+  
+  h += `<p class="text-xs text-emerald-400 mt-3">💡 <b>AI Advies:</b> Dit item heeft een geschatte verkoopwaarde van € ${data.val}.</p></div>`;
+  resBox.innerHTML = h;
+
+ } catch(e) {
+  resBox.innerHTML = '<p class="text-xs text-red-400">⚠️ Kan geen verbinding maken met de Python server.</p>';
+ }
+};
+
+async function loadSnipers() {
+ try {
+  const res = await fetch('/api/snipers');
+  const snipers = await res.json();
+  let h = '';
+  if(!snipers.length) { h = '<p class="text-xs text-slate-400">Nog geen snipers ingesteld.</p>'; }
+  snipers.forEach(s => {
+   h += `<div class="flex justify-between items-center bg-slate-800 p-3 rounded-lg text-sm border border-slate-700">
+    <div><b>🔍 ${s.query}</b><br><small class="text-xs text-slate-400">Prijs: €${s.minPrice||0} t/m €${s.maxPrice||'Onbeperkt'}</small></div>
+    <button onclick="deleteSniper('${s.id}')" class="text-red-400 font-bold hover:text-red-300">Verwijder</button>
+   </div>`;
+  });
+  document.getElementById('snipersList').innerHTML = h;
+ } catch(e){}
+}
+
+document.getElementById('addSniperBtn').onclick = async () => {
+ const query = document.getElementById('snQuery').value.trim();
+ const minPrice = document.getElementById('snMin').value;
+ const maxPrice = document.getElementById('snMax').value;
+ if(!query) return alert('Vul een zoekterm in.');
+ await fetch('/api/snipers', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({query, minPrice, maxPrice})
+ });
+ document.getElementById('snQuery').value = '';
+ document.getElementById('snMin').value = '';
+ document.getElementById('snMax').value = '';
+ loadSnipers();
+ alert('Sniper ingesteld!');
+};
+
+window.deleteSniper = async (id) => {
+ await fetch('/api/snipers/' + id, {method: 'DELETE'});
+ loadSnipers();
+};
+
+const deals = new Map();
+const listEl = document.getElementById('list');
+let ignoredIds = JSON.parse(localStorage.getItem('ignored_deals') || '[]');
+
+function removeDeal(id) {
+ if(!ignoredIds.includes(id)) { ignoredIds.push(id); localStorage.setItem('ignored_deals', JSON.stringify(ignoredIds)); }
+ deals.delete(id);
+ const el = document.querySelector(`[data-id="${id}"]`); if(el) el.remove();
+}
+
+function addDeal(raw) {
+ if(deals.has(raw.id) || ignoredIds.includes(raw.id)) return;
+ deals.set(raw.id, raw);
+ const adviesBadge = raw.advies || '🟢 HIT';
+ const badgeClass = adviesBadge.includes('TOP') ? 'bg-emerald-600' : adviesBadge.includes('GOEDE') ? 'bg-amber-500 text-black' : 'bg-red-600';
+
+ const el = document.createElement('div');
+ el.dataset.id = raw.id;
+ el.className = 'bg-slate-900 border border-slate-800 rounded-xl p-4 relative';
+ el.innerHTML = `
+  <div class="flex gap-3 items-start">
+   ${raw.image ? `<img src="${raw.image}" class="w-16 h-16 rounded-lg object-cover bg-slate-800 shrink-0">` : ''}
+   <div class="flex-grow min-w-0">
+    <div class="flex flex-wrap justify-between items-start gap-2">
+     <div class="font-semibold truncate pr-6"><a class="hover:underline text-sky-400" target="_blank" href="${raw.url}">${raw.title}</a></div>
+     <div class="flex items-center gap-2">
+      <span class="px-2 py-0.5 rounded text-xs font-bold ${badgeClass}">${adviesBadge}</span>
+      <button onclick="removeDeal('${raw.id}')" class="text-slate-400 hover:text-red-400 font-bold">✕</button>
+     </div>
+    </div>
+    <div class="text-xs text-slate-400 mt-1">Zoekopdracht: <b class="text-emerald-400">${raw.query}</b> · Vraagprijs: <b class="text-white">€${raw.price}</b></div>
+    <div class="text-xs text-slate-300 mt-2 bg-slate-800/80 p-2 rounded border border-slate-700/50 flex flex-wrap gap-4">
+      <span>Est. Marktwaarde: <b class="text-sky-400">€${raw.est_waarde || raw.price}</b></span>
+      <span>Netto Winst Est.: <b class="${(raw.winst||0)>=0?'text-emerald-400':'text-red-400'}">€${raw.winst || 0} (${raw.marge || 0}%)</b></span>
+    </div>
+   </div>
+  </div>`;
+ listEl.prepend(el);
+}
+
+async function scan() {
+ let live = false;
+ try {
+  const res = await fetch('/api/deals', {cache:'no-store'});
+  if(res.ok) {
+   const jsonDeals = await res.json();
+   jsonDeals.reverse().forEach(d => addDeal(d));
+   live = true;
+  }
+ } catch(e){}
+ const modeEl = document.getElementById('mode');
+ if(modeEl) modeEl.textContent = live ? '🟢 Live Snipers + AI Taxateur' : '🧪 Wachten...';
+}
+
+let left = 5;
+setInterval(async () => {
+ left--; if(left <= 0) { left = 5; await scan(); }
+ const cdEl = document.getElementById('cd'); if(cdEl) cdEl.textContent = left;
+}, 1000);
+document.getElementById('scanNow').onclick = async () => { left = 5; await scan(); };
+scan();
+</script>
+</body>
+</html>
