@@ -1,6 +1,6 @@
 """Marktplaats Multi-Sniper met Web Pushover Schakelaar & Console Logging. 
 Start: python scraper.py  ->  http://localhost:8000"""
-import json, random, threading, time, pathlib, re
+import json, threading, pathlib
 from datetime import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import requests
@@ -8,15 +8,13 @@ import requests
 URL = "https://www.marktplaats.nl/lrp/api/search"
 HEAD = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
         "Accept": "application/json", "Accept-Language": "nl-NL,nl;q=0.9"}
-deals, seen, lock = [], set(), threading.Lock()
 
-# Pushover status variabelen
 pushover_status = {"active": True}
 PUSHOVER_TOKEN = "a7gaee6d5pq9kvgoreevkku7v7zq5z"
 PUSHOVER_USER = "ua9w8mtp93etpk55pnofkbixs1jxhr"
 
 def stuur_pushover_melding(query, titel, prijs_display, url):
-    if not pushover_status["active"] or PUSHOVER_TOKEN == "JOUW_API_TOKEN" or PUSHOVER_USER == "JOUW_USER_KEY":
+    if not pushover_status["active"]:
         return
     try:
         bericht = (
@@ -31,16 +29,9 @@ def stuur_pushover_melding(query, titel, prijs_display, url):
     except Exception as e:
         print("Pushover melding mislukt:", e)
 
-def scan_loop():
-    while True:
-        time.sleep(40)
-
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path.startswith("/api/deals"):
-            with lock:
-                body, ctype = json.dumps(deals).encode(), "application/json"
-        elif self.path.startswith("/api/pushover-status"):
+        if self.path.startswith("/api/pushover-status"):
             body, ctype = json.dumps(pushover_status).encode(), "application/json"
         else:
             try:
@@ -59,6 +50,7 @@ class H(BaseHTTPRequestHandler):
             length = int(self.headers.get('content-length', 0))
             data = json.loads(self.rfile.read(length).decode())
             snipers = data.get("snipers", [])
+            found_deals = []
             
             for sniper in snipers:
                 q = sniper.get("query", ".")
@@ -87,14 +79,10 @@ class H(BaseHTTPRequestHandler):
                         else:
                             price_val = price
                             price_display = f"€{price}"
-
-                        if iid in seen:
-                            continue
                         
                         if price_type == "FIXED" and (price_val < min_p or price_val > max_p):
                             continue
                             
-                        seen.add(iid)
                         title = it.get("title", "")
                         desc = it.get("description", "") or it.get("categorySpecificDescription", "") or ""
                         url = it.get("vipUrl", "")
@@ -102,12 +90,10 @@ class H(BaseHTTPRequestHandler):
                         images = it.get("images", [])
                         image_url = (images[0].get("smallUrl") or images[0].get("largeUrl") or "") if images else ""
                         
-                        with lock:
-                            deals.insert(0, {
-                                "id": iid, "title": title, "desc": desc, "price": price_val,
-                                "price_display": price_display, "url": url, "image": image_url, "query": q, "geplaatst": "Zojuist"
-                            })
-                            del deals[200:]
+                        found_deals.append({
+                            "id": iid, "title": title, "desc": desc, "price": price_val,
+                            "price_display": price_display, "url": url, "image": image_url, "query": q, "geplaatst": "Zojuist"
+                        })
                         
                         tijdstip = datetime.now().strftime("%H:%M:%S")
                         print(f"[{tijdstip}] 🎯 Sniper [{q}] Hit! Vraag: {price_display} | {title[:40]}")
@@ -118,7 +104,7 @@ class H(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"status": "ok"}).encode())
+            self.wfile.write(json.dumps(found_deals).encode())
 
         elif self.path.startswith("/api/pushover-toggle"):
             length = int(self.headers.get('content-length', 0))
@@ -134,5 +120,5 @@ class H(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 8000))
-    print(f"Open http://localhost:{port} (Geheugen Snipers Actief)")
+    print(f"Open http://localhost:{port} (Persoonlijke Browser-Snipers Actief)")
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()
