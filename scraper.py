@@ -15,19 +15,6 @@ pushover_status = {"active": True}
 PUSHOVER_TOKEN = "a7gaee6d5pq9kvgoreevkku7v7zq5z"
 PUSHOVER_USER = "ua9w8mtp93etpk55pnofkbixs1jxhr"
 
-SNIPERS_FILE = pathlib.Path(__file__).parent / "snipers.json"
-
-def get_snipers():
-    if SNIPERS_FILE.exists():
-        try:
-            return json.loads(SNIPERS_FILE.read_text(encoding="utf-8"))
-        except:
-            pass
-    return [{"id": "default", "query": ".", "minPrice": 0, "maxPrice": 0}]
-
-def save_snipers(snipers):
-    SNIPERS_FILE.write_text(json.dumps(snipers, indent=2), encoding="utf-8")
-
 def stuur_pushover_melding(query, titel, prijs_display, url):
     if not pushover_status["active"] or PUSHOVER_TOKEN == "JOUW_API_TOKEN" or PUSHOVER_USER == "JOUW_USER_KEY":
         return
@@ -46,68 +33,6 @@ def stuur_pushover_melding(query, titel, prijs_display, url):
 
 def scan_loop():
     while True:
-        snipers = get_snipers()
-        for sniper in snipers:
-            q = sniper.get("query", ".")
-            min_p = float(sniper.get("minPrice", 0) or 0)
-            
-            max_p_val = sniper.get("maxPrice")
-            if max_p_val == "" or max_p_val is None:
-                max_p = 100000
-            else:
-                max_p = float(max_p_val)
-            
-            try:
-                params = {"query": q, "limit": 40, "offset": 0, "sortBy": "SORT_INDEX", "sortOrder": "DECREASING", "postcode": "5503BA", "distanceMeters": 30000}
-                r = requests.get(URL, headers=HEAD, timeout=15, params=params)
-                if not r.ok: continue
-                listings = r.json().get("listings", [])
-                for it in listings:
-                    iid = str(it.get("itemId"))
-                    
-                    price_info = it.get("priceInfo") or {}
-                    price_type = price_info.get("priceType", "")
-                    price_cents = price_info.get("priceCents", 0)
-                    price = price_cents // 100
-                    
-                    if price_type == "GRATIS":
-                        price_val = 0
-                        price_display = "Gratis"
-                    elif price_type in ["BIEDEN", "BID", "MARKTPIJS"] or price_cents == 0:
-                        price_val = 0
-                        price_display = "Bieden"
-                    else:
-                        price_val = price
-                        price_display = f"€{price}"
-
-                    if iid in seen:
-                        continue
-                    
-                    if price_type == "FIXED" and (price_val < min_p or price_val > max_p):
-                        continue
-                        
-                    seen.add(iid)
-                    title = it.get("title", "")
-                    desc = it.get("description", "") or it.get("categorySpecificDescription", "") or ""
-                    url = it.get("vipUrl", "")
-                    url = url if url.startswith("http") else "https://www.marktplaats.nl" + url
-                    images = it.get("images", [])
-                    image_url = (images[0].get("smallUrl") or images[0].get("largeUrl") or "") if images else ""
-                    
-                    with lock:
-                        deals.insert(0, {
-                            "id": iid, "title": title, "desc": desc, "price": price_val,
-                            "price_display": price_display, "url": url, "image": image_url, "query": q, "geplaatst": "Zojuist"
-                        })
-                        del deals[200:]
-                    
-                    tijdstip = datetime.now().strftime("%H:%M:%S")
-                    print(f"[{tijdstip}] 🎯 Sniper [{q}] Hit! Vraag: {price_display} | {title[:40]}")
-                    
-                    stuur_pushover_melding(q, title, price_display, url)
-                time.sleep(2)
-            except Exception as e:
-                print(f"Fout bij sniper {q}:", e)
         time.sleep(40)
 
 class H(BaseHTTPRequestHandler):
@@ -115,8 +40,6 @@ class H(BaseHTTPRequestHandler):
         if self.path.startswith("/api/deals"):
             with lock:
                 body, ctype = json.dumps(deals).encode(), "application/json"
-        elif self.path.startswith("/api/snipers"):
-            body, ctype = json.dumps(get_snipers()).encode(), "application/json"
         elif self.path.startswith("/api/pushover-status"):
             body, ctype = json.dumps(pushover_status).encode(), "application/json"
         else:
@@ -132,16 +55,71 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        if self.path.startswith("/api/snipers"):
+        if self.path.startswith("/api/scan-item"):
             length = int(self.headers.get('content-length', 0))
             data = json.loads(self.rfile.read(length).decode())
-            snipers = get_snipers()
-            data["id"] = str(int(time.time()*1000))
-            snipers.append(data)
-            save_snipers(snipers)
+            snipers = data.get("snipers", [])
+            
+            for sniper in snipers:
+                q = sniper.get("query", ".")
+                min_p = float(sniper.get("minPrice", 0) or 0)
+                max_p_val = sniper.get("maxPrice")
+                max_p = 100000 if (max_p_val == "" or max_p_val is None) else float(max_p_val)
+                
+                try:
+                    params = {"query": q, "limit": 20, "offset": 0, "sortBy": "SORT_INDEX", "sortOrder": "DECREASING", "postcode": "5503BA", "distanceMeters": 30000}
+                    r = requests.get(URL, headers=HEAD, timeout=15, params=params)
+                    if not r.ok: continue
+                    listings = r.json().get("listings", [])
+                    for it in listings:
+                        iid = str(it.get("itemId"))
+                        price_info = it.get("priceInfo") or {}
+                        price_type = price_info.get("priceType", "")
+                        price_cents = price_info.get("priceCents", 0)
+                        price = price_cents // 100
+                        
+                        if price_type == "GRATIS":
+                            price_val = 0
+                            price_display = "Gratis"
+                        elif price_type in ["BIEDEN", "BID", "MARKTPIJS"] or price_cents == 0:
+                            price_val = 0
+                            price_display = "Bieden"
+                        else:
+                            price_val = price
+                            price_display = f"€{price}"
+
+                        if iid in seen:
+                            continue
+                        
+                        if price_type == "FIXED" and (price_val < min_p or price_val > max_p):
+                            continue
+                            
+                        seen.add(iid)
+                        title = it.get("title", "")
+                        desc = it.get("description", "") or it.get("categorySpecificDescription", "") or ""
+                        url = it.get("vipUrl", "")
+                        url = url if url.startswith("http") else "https://www.marktplaats.nl" + url
+                        images = it.get("images", [])
+                        image_url = (images[0].get("smallUrl") or images[0].get("largeUrl") or "") if images else ""
+                        
+                        with lock:
+                            deals.insert(0, {
+                                "id": iid, "title": title, "desc": desc, "price": price_val,
+                                "price_display": price_display, "url": url, "image": image_url, "query": q, "geplaatst": "Zojuist"
+                            })
+                            del deals[200:]
+                        
+                        tijdstip = datetime.now().strftime("%H:%M:%S")
+                        print(f"[{tijdstip}] 🎯 Sniper [{q}] Hit! Vraag: {price_display} | {title[:40]}")
+                        stuur_pushover_melding(q, title, price_display, url)
+                except Exception as e:
+                    print(f"Fout bij sniper {q}:", e)
+            
             self.send_response(200)
+            self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(b'{"status":"ok"}')
+            self.wfile.write(json.dumps({"status": "ok"}).encode())
+
         elif self.path.startswith("/api/pushover-toggle"):
             length = int(self.headers.get('content-length', 0))
             data = json.loads(self.rfile.read(length).decode())
@@ -151,20 +129,10 @@ class H(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(pushover_status).encode())
 
-    def do_DELETE(self):
-        if self.path.startswith("/api/snipers/"):
-            sid = self.path.split("/")[-1]
-            snipers = [s for s in get_snipers() if s.get("id") != sid]
-            save_snipers(snipers)
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b'{"status":"ok"}')
-
     def log_message(self, *a): pass
 
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 8000))
-    threading.Thread(target=scan_loop, daemon=True).start()
-    print(f"Open http://localhost:{port} (Web Pushover Schakelaar Actief)")
+    print(f"Open http://localhost:{port} (Geheugen Snipers Actief)")
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()
