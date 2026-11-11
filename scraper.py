@@ -28,36 +28,13 @@ def get_snipers():
 def save_snipers(snipers):
     SNIPERS_FILE.write_text(json.dumps(snipers, indent=2), encoding="utf-8")
 
-def analyseer_live_marktdata(listings, huidige_prijs, titel, desc):
-    prijzen = []
-    for it in listings:
-        p_info = it.get("priceInfo") or {}
-        if p_info.get("priceType") == "FIXED":
-            p = p_info.get("priceCents", 0) // 100
-            if 0 < p < 5000:
-                prijzen.append(p)
-            
-    if prijzen:
-        prijzen.sort()
-        gemiddelde_marktwaarde = int(prijzen[len(prijzen)//2]) if len(prijzen) > 2 else int(sum(prijzen) / len(prijzen))
-    else:
-        gemiddelde_marktwaarde = 50
-
-    winst = gemiddelde_marktwaarde - huidige_prijs
-    advies = "🟢 GRATIS OPHALEN / TOP DEAL" if huidige_prijs == 0 else "🟢 GOEDE DEAL"
-
-    return gemiddelde_marktwaarde, winst, 100, advies
-
-def stuur_pushover_analyse(query, titel, prijs_display, url, marktwaarde, winst, marge, advies):
+def stuur_pushover_melding(query, titel, prijs_display, url):
     if not pushover_status["active"] or PUSHOVER_TOKEN == "JOUW_API_TOKEN" or PUSHOVER_USER == "JOUW_USER_KEY":
         return
     try:
         bericht = (
-            f"🎯 SMART SNIPER HIT: [{query.upper()}]\n"
-            f"{advies}\n\n"
-            f"💵 Vraagprijs: {prijs_display}\n"
-            f"📊 Est. Verkoopwaarde: €{marktwaarde}\n"
-            f"💰 Est. Netto Winst: €{winst}\n\n"
+            f"🎯 SNIPER HIT: [{query.upper()}]\n\n"
+            f"💵 Vraagprijs: {prijs_display}\n\n"
             f"📌 {titel}"
         )
         requests.post("https://api.pushover.net/1/messages.json", data={
@@ -106,7 +83,6 @@ def scan_loop():
                     if iid in seen:
                         continue
                     
-                    # Alleen filteren op prijs als het een vaste prijs is en buiten range valt
                     if price_type == "FIXED" and (price_val < min_p or price_val > max_p):
                         continue
                         
@@ -118,19 +94,17 @@ def scan_loop():
                     images = it.get("images", [])
                     image_url = (images[0].get("smallUrl") or images[0].get("largeUrl") or "") if images else ""
                     
-                    marktwaarde, winst, marge, advies = analyseer_live_marktdata(listings, price_val, title, desc)
                     with lock:
                         deals.insert(0, {
                             "id": iid, "title": title, "desc": desc, "price": price_val,
-                            "price_display": price_display, "url": url, "image": image_url, "query": q, "geplaatst": "Zojuist",
-                            "est_waarde": marktwaarde, "winst": winst, "marge": marge, "advies": advies
+                            "price_display": price_display, "url": url, "image": image_url, "query": q, "geplaatst": "Zojuist"
                         })
                         del deals[200:]
                     
                     tijdstip = datetime.now().strftime("%H:%M:%S")
-                    print(f"[{tijdstip}] 🎯 Sniper [{q}] Hit! Vraag: {price_display} | Winst est: €{winst} | {title[:40]}")
+                    print(f"[{tijdstip}] 🎯 Sniper [{q}] Hit! Vraag: {price_display} | {title[:40]}")
                     
-                    stuur_pushover_analyse(q, title, price_display, url, marktwaarde, winst, marge, advies)
+                    stuur_pushover_melding(q, title, price_display, url)
                 time.sleep(2)
             except Exception as e:
                 print(f"Fout bij sniper {q}:", e)
@@ -176,58 +150,6 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(pushover_status).encode())
-        elif self.path.startswith("/api/taxeer"):
-            length = int(self.headers.get('content-length', 0))
-            req = json.loads(self.rfile.read(length).decode())
-            prompt = req.get("prompt", "").lower()
-            query = req.get("query", "iphone 15").lower()
-            cost = float(req.get("cost", 0) or 0)
-            
-            try:
-                base_prijzen = {
-                    "iphone 17 pro max": 930, "iphone 17 pro": 830, "iphone 17": 690,
-                    "iphone 16 pro max": 680, "iphone 16 pro": 590, "iphone 16": 475,
-                    "iphone 15 pro max": 565, "iphone 15 pro": 475, "iphone 15": 350,
-                    "iphone 14 pro max": 420, "iphone 14 pro": 360, "iphone 14": 290,
-                    "iphone 13 pro max": 350, "iphone 13 pro": 295, "iphone 13": 245,
-                    "iphone 12 pro max": 230, "iphone 12 pro": 200, "iphone 12": 140,
-                    "iphone 11 pro max": 185, "iphone 11 pro": 155, "iphone 11": 125
-                }
-                ref_markt = 350
-                for model_naam, prijs_val in base_prijzen.items():
-                    if model_naam in prompt:
-                        ref_markt = prijs_val
-                        break
-                
-                if ref_markt == 350 and not any(m in prompt for m in base_prijzen.keys()):
-                    params = {"query": query, "limit": 30, "postcode": "5503BA", "distanceMeters": 30000}
-                    r = requests.get(URL, headers=HEAD, timeout=15, params=params)
-                    listings = r.json().get("listings", []) if r.ok else []
-                    prijzen = [(it.get("priceInfo") or {}).get("priceCents", 0) // 100 for it in listings]
-                    prijzen = [p for p in prijzen if 20 < p < 5000]
-                    if prijzen:
-                        ref_markt = int(sum(prijzen) / len(prijzen))
-
-                multiplier = 1.0
-                note = "Nette gebruikte staat."
-                if "geen schade" in prompt or "netjes" in prompt or "zgan" in prompt:
-                    multiplier += 0.05
-                if "schade" in prompt or "barst" in prompt or "kras" in prompt or "deuk" in prompt:
-                    multiplier -= 0.30
-                if "defect" in prompt or "kapot" in prompt:
-                    multiplier -= 0.50
-
-                finalVal = int(ref_markt * multiplier)
-                winst = int(finalVal - cost) if cost > 0 else 0
-                res_data = {"val": finalVal, "avg": ref_markt, "note": note, "winst": winst}
-                body = json.dumps(res_data).encode()
-            except Exception as e:
-                body = json.dumps({"error": str(e)}).encode()
-
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(body)
 
     def do_DELETE(self):
         if self.path.startswith("/api/snipers/"):
