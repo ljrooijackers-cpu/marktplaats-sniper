@@ -135,17 +135,13 @@ document.getElementById('navScanner').onclick = () => switchView('scanner');
 document.getElementById('navSnipers').onclick = () => switchView('snipers');
 
 function getStoredSnipers() {
- let snipers = JSON.parse(localStorage.getItem('marktplaats_snipers') || '[]');
- if(!snipers.length) {
-  snipers = [{id: 'default', query: '.', minPrice: 0, maxPrice: 0}];
-  localStorage.setItem('marktplaats_snipers', JSON.stringify(snipers));
- }
- return snipers;
+ return JSON.parse(localStorage.getItem('marktplaats_snipers') || '[]');
 }
 
 function loadSnipers() {
  const snipers = getStoredSnipers();
  let h = '';
+ if(!snipers.length) { h = '<p class="text-xs text-slate-400">Nog geen snipers ingesteld.</p>'; }
  snipers.forEach(s => {
   h += `<div class="flex justify-between items-center bg-slate-800 p-3 rounded-lg text-sm border border-slate-700">
    <div><b>🔍 ${s.query}</b><br><small class="text-xs text-slate-400">Prijs: €${s.minPrice||0} t/m €${s.maxPrice||'Onbeperkt'}</small></div>
@@ -213,11 +209,13 @@ async function scan() {
  let live = false;
  try {
   const snipers = getStoredSnipers();
-  const res = await fetch('/api/scan-item', {
-   method: 'POST',
-   headers: {'Content-Type': 'application/json'},
-   body: JSON.stringify({ snipers })
-  });
+  if(snipers.length > 0) {
+   await fetch('/api/scan-item', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ snipers })
+   });
+  }
   
   const dealsRes = await fetch('/api/deals', {cache:'no-store'});
   if(dealsRes.ok) {
