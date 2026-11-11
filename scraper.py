@@ -31,9 +31,11 @@ def save_snipers(snipers):
 def analyseer_live_marktdata(listings, huidige_prijs, titel, desc):
     prijzen = []
     for it in listings:
-        p = (it.get("priceInfo") or {}).get("priceCents", 0) // 100
-        if 0 < p < 5000:
-            prijzen.append(p)
+        p_info = it.get("priceInfo") or {}
+        if p_info.get("priceType") == "FIXED":
+            p = p_info.get("priceCents", 0) // 100
+            if 0 < p < 5000:
+                prijzen.append(p)
             
     if prijzen:
         prijzen.sort()
@@ -46,14 +48,14 @@ def analyseer_live_marktdata(listings, huidige_prijs, titel, desc):
 
     return gemiddelde_marktwaarde, winst, 100, advies
 
-def stuur_pushover_analyse(query, titel, prijs, url, marktwaarde, winst, marge, advies):
+def stuur_pushover_analyse(query, titel, prijs_display, url, marktwaarde, winst, marge, advies):
     if not pushover_status["active"] or PUSHOVER_TOKEN == "JOUW_API_TOKEN" or PUSHOVER_USER == "JOUW_USER_KEY":
         return
     try:
         bericht = (
             f"🎯 SMART SNIPER HIT: [{query.upper()}]\n"
             f"{advies}\n\n"
-            f"💵 Vraagprijs: €{prijs}\n"
+            f"💵 Vraagprijs: {prijs_display}\n"
             f"📊 Est. Verkoopwaarde: €{marktwaarde}\n"
             f"💰 Est. Netto Winst: €{winst}\n\n"
             f"📌 {titel}"
@@ -88,15 +90,24 @@ def scan_loop():
                     
                     price_info = it.get("priceInfo") or {}
                     price_type = price_info.get("priceType", "")
-                    price = price_info.get("priceCents", 0) // 100
+                    price_cents = price_info.get("priceCents", 0)
+                    price = price_cents // 100
                     
                     if price_type == "GRATIS":
-                        price = 0
+                        price_val = 0
+                        price_display = "Gratis"
+                    elif price_type in ["BIEDEN", "BID", "MARKTPIJS"] or price_cents == 0:
+                        price_val = 0
+                        price_display = "Bieden"
+                    else:
+                        price_val = price
+                        price_display = f"€{price}"
 
                     if iid in seen:
                         continue
                     
-                    if price < min_p or price > max_p:
+                    # Alleen filteren op prijs als het een vaste prijs is en buiten range valt
+                    if price_type == "FIXED" and (price_val < min_p or price_val > max_p):
                         continue
                         
                     seen.add(iid)
@@ -107,19 +118,19 @@ def scan_loop():
                     images = it.get("images", [])
                     image_url = (images[0].get("smallUrl") or images[0].get("largeUrl") or "") if images else ""
                     
-                    marktwaarde, winst, marge, advies = analyseer_live_marktdata(listings, price, title, desc)
+                    marktwaarde, winst, marge, advies = analyseer_live_marktdata(listings, price_val, title, desc)
                     with lock:
                         deals.insert(0, {
-                            "id": iid, "title": title, "desc": desc, "price": price,
-                            "url": url, "image": image_url, "query": q, "geplaatst": "Zojuist",
+                            "id": iid, "title": title, "desc": desc, "price": price_val,
+                            "price_display": price_display, "url": url, "image": image_url, "query": q, "geplaatst": "Zojuist",
                             "est_waarde": marktwaarde, "winst": winst, "marge": marge, "advies": advies
                         })
                         del deals[200:]
                     
                     tijdstip = datetime.now().strftime("%H:%M:%S")
-                    print(f"[{tijdstip}] 🎯 Sniper [{q}] Hit! Vraag: €{price} | Winst est: €{winst} | {title[:40]}")
+                    print(f"[{tijdstip}] 🎯 Sniper [{q}] Hit! Vraag: {price_display} | Winst est: €{winst} | {title[:40]}")
                     
-                    stuur_pushover_analyse(q, title, price, url, marktwaarde, winst, marge, advies)
+                    stuur_pushover_analyse(q, title, price_display, url, marktwaarde, winst, marge, advies)
                 time.sleep(2)
             except Exception as e:
                 print(f"Fout bij sniper {q}:", e)
