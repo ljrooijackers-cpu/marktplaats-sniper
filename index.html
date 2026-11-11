@@ -134,32 +134,37 @@ function switchView(view) {
 document.getElementById('navScanner').onclick = () => switchView('scanner');
 document.getElementById('navSnipers').onclick = () => switchView('snipers');
 
-async function loadSnipers() {
- try {
-  const res = await fetch('/api/snipers');
-  const snipers = await res.json();
-  let h = '';
-  if(!snipers.length) { h = '<p class="text-xs text-slate-400">Nog geen snipers ingesteld.</p>'; }
-  snipers.forEach(s => {
-   h += `<div class="flex justify-between items-center bg-slate-800 p-3 rounded-lg text-sm border border-slate-700">
-    <div><b>🔍 ${s.query}</b><br><small class="text-xs text-slate-400">Prijs: €${s.minPrice||0} t/m €${s.maxPrice||'Onbeperkt'}</small></div>
-    <button onclick="deleteSniper('${s.id}')" class="text-red-400 font-bold hover:text-red-300">Verwijder</button>
-   </div>`;
-  });
-  document.getElementById('snipersList').innerHTML = h;
- } catch(e){}
+function getStoredSnipers() {
+ let snipers = JSON.parse(localStorage.getItem('marktplaats_snipers') || '[]');
+ if(!snipers.length) {
+  snipers = [{id: 'default', query: '.', minPrice: 0, maxPrice: 0}];
+  localStorage.setItem('marktplaats_snipers', JSON.stringify(snipers));
+ }
+ return snipers;
 }
 
-document.getElementById('addSniperBtn').onclick = async () => {
+function loadSnipers() {
+ const snipers = getStoredSnipers();
+ let h = '';
+ snipers.forEach(s => {
+  h += `<div class="flex justify-between items-center bg-slate-800 p-3 rounded-lg text-sm border border-slate-700">
+   <div><b>🔍 ${s.query}</b><br><small class="text-xs text-slate-400">Prijs: €${s.minPrice||0} t/m €${s.maxPrice||'Onbeperkt'}</small></div>
+   <button onclick="deleteSniper('${s.id}')" class="text-red-400 font-bold hover:text-red-300">Verwijder</button>
+  </div>`;
+ });
+ document.getElementById('snipersList').innerHTML = h;
+}
+
+document.getElementById('addSniperBtn').onclick = () => {
  const query = document.getElementById('snQuery').value.trim();
  const minPrice = document.getElementById('snMin').value;
  const maxPrice = document.getElementById('snMax').value;
  if(!query) return alert('Vul een zoekterm in.');
- await fetch('/api/snipers', {
-  method: 'POST',
-  headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify({query, minPrice, maxPrice})
- });
+ 
+ let snipers = getStoredSnipers();
+ snipers.push({ id: String(Date.now()), query, minPrice, maxPrice });
+ localStorage.setItem('marktplaats_snipers', JSON.stringify(snipers));
+
  document.getElementById('snQuery').value = '';
  document.getElementById('snMin').value = '';
  document.getElementById('snMax').value = '';
@@ -167,8 +172,9 @@ document.getElementById('addSniperBtn').onclick = async () => {
  alert('Sniper ingesteld!');
 };
 
-window.deleteSniper = async (id) => {
- await fetch('/api/snipers/' + id, {method: 'DELETE'});
+window.deleteSniper = (id) => {
+ let snipers = getStoredSnipers().filter(s => s.id !== id);
+ localStorage.setItem('marktplaats_snipers', JSON.stringify(snipers));
  loadSnipers();
 };
 
@@ -206,9 +212,16 @@ function addDeal(raw) {
 async function scan() {
  let live = false;
  try {
-  const res = await fetch('/api/deals', {cache:'no-store'});
-  if(res.ok) {
-   const jsonDeals = await res.json();
+  const snipers = getStoredSnipers();
+  const res = await fetch('/api/scan-item', {
+   method: 'POST',
+   headers: {'Content-Type': 'application/json'},
+   body: JSON.stringify({ snipers })
+  });
+  
+  const dealsRes = await fetch('/api/deals', {cache:'no-store'});
+  if(dealsRes.ok) {
+   const jsonDeals = await dealsRes.json();
    jsonDeals.reverse().forEach(d => addDeal(d));
    live = true;
   }
